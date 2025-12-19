@@ -3,9 +3,17 @@ import { WebSocketMessage, WebSocketEvent } from '../types';
 class WebSocketService {
   private ws: WebSocket | null = null;
   private reconnectTimeout: number = 1000;
+  private maxReconnectTimeout: number = 30000;
+  private reconnectAttempts: number = 0;
+  private maxReconnectAttempts: number = 10;
   private listeners: Map<string, Set<(event: WebSocketEvent) => void>> = new Map();
+  private projectId: string = '';
+  private token: string = '';
 
   connect(projectId: string, token: string) {
+    this.projectId = projectId;
+    this.token = token;
+    
     const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:3001';
     const url = `${wsUrl}?token=${token}&project_id=${projectId}`;
 
@@ -14,6 +22,7 @@ class WebSocketService {
     this.ws.onopen = () => {
       console.log('WebSocket connected');
       this.reconnectTimeout = 1000;
+      this.reconnectAttempts = 0;
     };
 
     this.ws.onmessage = (event) => {
@@ -27,11 +36,19 @@ class WebSocketService {
 
     this.ws.onclose = () => {
       console.log('WebSocket disconnected');
-      // Reconnect with exponential backoff
-      setTimeout(() => {
-        this.reconnectTimeout = Math.min(this.reconnectTimeout * 2, 30000);
-        this.connect(projectId, token);
-      }, this.reconnectTimeout);
+      
+      // Only reconnect if we haven't exceeded max attempts
+      if (this.reconnectAttempts < this.maxReconnectAttempts) {
+        // Reconnect with exponential backoff
+        setTimeout(() => {
+          this.reconnectAttempts++;
+          this.reconnectTimeout = Math.min(this.reconnectTimeout * 2, this.maxReconnectTimeout);
+          console.log(`Reconnecting (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+          this.connect(this.projectId, this.token);
+        }, this.reconnectTimeout);
+      } else {
+        console.error('Max reconnection attempts reached. Please refresh the page.');
+      }
     };
 
     this.ws.onerror = (error) => {

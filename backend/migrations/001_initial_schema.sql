@@ -147,12 +147,13 @@ CREATE TRIGGER update_comments_updated_at BEFORE UPDATE ON comments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert seed data for development
--- SECURITY NOTE: This password hash is for demonstration only.
--- In production, generate proper bcrypt hashes using a tool or script.
--- Example: echo 'password' | bcrypt (requires bcrypt CLI)
--- The hash below is bcrypt hash of 'password' with cost factor 10
+-- SECURITY NOTE: Generate a proper bcrypt hash before using this migration.
+-- Run: node backend/scripts/generate-password-hash.js password
+-- Then replace the hash below with the generated value.
+-- Default password for demo user: 'DemoPassword123!'
+-- Proper bcrypt hash example: $2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy
 INSERT INTO users (id, email, name, password_hash) VALUES
-    ('11111111-1111-1111-1111-111111111111', 'demo@example.com', 'Demo User', '$2b$10$YourActualBcryptHashShouldGoHere')
+    ('11111111-1111-1111-1111-111111111111', 'demo@example.com', 'Demo User', '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy')
 ON CONFLICT (email) DO NOTHING;
 
 -- Sample project

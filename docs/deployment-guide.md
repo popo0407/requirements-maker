@@ -214,9 +214,11 @@ aws s3 sync build/ s3://$BUCKET_NAME/ --delete
 # aws cloudfront list-distributions --query 'DistributionList.Items[?Comment==`requirements-maker-prod`].Id' --output text
 
 # Note: CloudFormation template sets a Comment field for identification
-# Get distribution ID by comment (stack name)
+# The Comment is set to ${AWS::StackName}-frontend, so for prod it's:
+# requirements-maker-prod-frontend
+STACK_NAME="requirements-maker-prod"
 DISTRIBUTION_ID=$(aws cloudfront list-distributions \
-  --query "DistributionList.Items[?Comment=='requirements-maker-prod-frontend'].Id" \
+  --query "DistributionList.Items[?Comment=='${STACK_NAME}-frontend'].Id" \
   --output text)
 
 aws cloudfront create-invalidation \

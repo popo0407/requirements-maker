@@ -176,11 +176,16 @@ export async function handleMessage(
  * Handle edit message
  */
 async function handleEditMessage(connection: any, message: WebSocketMessage) {
+  // Fetch user name from database
+  const user = await queryOne<any>(`
+    SELECT name FROM users WHERE id = $1
+  `, [connection.user_id]);
+  
   const event: WebSocketEvent = {
     type: 'edit',
     user: {
       id: connection.user_id,
-      name: 'User Name' // Should fetch from users table
+      name: user?.name || 'Unknown User'
     },
     data: message.data,
     timestamp: new Date().toISOString()
@@ -197,11 +202,16 @@ async function handleEditMessage(connection: any, message: WebSocketMessage) {
  * Handle cursor message
  */
 async function handleCursorMessage(connection: any, message: WebSocketMessage) {
+  // Fetch user name from database
+  const user = await queryOne<any>(`
+    SELECT name FROM users WHERE id = $1
+  `, [connection.user_id]);
+  
   const event: WebSocketEvent = {
     type: 'cursor',
     user: {
       id: connection.user_id,
-      name: 'User Name'
+      name: user?.name || 'Unknown User'
     },
     data: message.data,
     timestamp: new Date().toISOString()
@@ -218,11 +228,16 @@ async function handleCursorMessage(connection: any, message: WebSocketMessage) {
  * Handle presence message
  */
 async function handlePresenceMessage(connection: any, message: WebSocketMessage) {
+  // Fetch user name from database
+  const user = await queryOne<any>(`
+    SELECT name FROM users WHERE id = $1
+  `, [connection.user_id]);
+  
   const event: WebSocketEvent = {
     type: 'presence',
     user: {
       id: connection.user_id,
-      name: 'User Name'
+      name: user?.name || 'Unknown User'
     },
     data: message.data,
     timestamp: new Date().toISOString()

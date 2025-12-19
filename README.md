@@ -32,6 +32,7 @@ Requirements Makerは、ソフトウェア開発の上流工程（アイデア�
 - AWS Lambda (serverless)
 - API Gateway (REST + WebSocket)
 - PostgreSQL (Amazon RDS)
+- AWS SDK v2 (future: migrate to v3 for better performance)
 
 ### Infrastructure
 - AWS CloudFormation (IaC)
