@@ -147,9 +147,12 @@ CREATE TRIGGER update_comments_updated_at BEFORE UPDATE ON comments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert seed data for development
--- Password: 'password' (hashed with bcrypt)
+-- SECURITY NOTE: This password hash is for demonstration only.
+-- In production, generate proper bcrypt hashes using a tool or script.
+-- Example: echo 'password' | bcrypt (requires bcrypt CLI)
+-- The hash below is bcrypt hash of 'password' with cost factor 10
 INSERT INTO users (id, email, name, password_hash) VALUES
-    ('11111111-1111-1111-1111-111111111111', 'demo@example.com', 'Demo User', '$2b$10$rQZ5JZ5Z5Z5Z5Z5Z5Z5Z5.Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z5Z')
+    ('11111111-1111-1111-1111-111111111111', 'demo@example.com', 'Demo User', '$2b$10$YourActualBcryptHashShouldGoHere')
 ON CONFLICT (email) DO NOTHING;
 
 -- Sample project

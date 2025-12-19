@@ -48,6 +48,14 @@ REACT_APP_WS_URL=wss://ws.requirements-maker.example.com
 # PostgreSQLデータベース作成
 createdb requirements_maker
 
+# パスワードハッシュを生成（開発用ユーザー）
+cd backend
+npm install
+node scripts/generate-password-hash.js password
+
+# 生成されたハッシュを使ってマイグレーションファイルを更新
+# backend/migrations/001_initial_schema.sql の password_hash を置き換える
+
 # マイグレーション実行
 psql -d requirements_maker -f backend/migrations/001_initial_schema.sql
 ```
@@ -205,15 +213,10 @@ aws s3 sync build/ s3://$BUCKET_NAME/ --delete
 # Get the distribution ID from the CloudFront console or use AWS CLI to list distributions
 # aws cloudfront list-distributions --query 'DistributionList.Items[?Comment==`requirements-maker-prod`].Id' --output text
 
-# Alternatively, extract from CloudFront URL
-CLOUDFRONT_URL=$(aws cloudformation describe-stacks \
-  --stack-name requirements-maker-prod \
-  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontURL`].OutputValue' \
-  --output text)
-
-# Get distribution ID by domain name
+# Note: CloudFormation template sets a Comment field for identification
+# Get distribution ID by comment (stack name)
 DISTRIBUTION_ID=$(aws cloudfront list-distributions \
-  --query "DistributionList.Items[?DomainName=='$CLOUDFRONT_URL'].Id" \
+  --query "DistributionList.Items[?Comment=='requirements-maker-prod-frontend'].Id" \
   --output text)
 
 aws cloudfront create-invalidation \

@@ -254,6 +254,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
+        Comment: !Sub ${AWS::StackName}-frontend
         DefaultRootObject: index.html
         Origins:
           - Id: S3Origin
@@ -331,9 +332,6 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${AWS::StackName}-websocket
       RetentionInDays: 30
-
-Conditions:
-  IsProd: !Equals [!Ref Environment, prod]
 
 Outputs:
   VPCId:
