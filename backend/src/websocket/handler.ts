@@ -46,6 +46,11 @@ export async function handleConnect(
     
     const userId = getUserIdFromToken(token);
     
+    // Fetch user name
+    const user = await queryOne<any>(`
+      SELECT name FROM users WHERE id = $1
+    `, [userId]);
+    
     // Store connection
     await query(`
       INSERT INTO connections (connection_id, project_id, user_id, connected_at, last_active)
@@ -57,7 +62,7 @@ export async function handleConnect(
       type: 'presence',
       user: {
         id: userId,
-        name: 'User Name' // Should fetch from users table
+        name: user?.name || 'Unknown User'
       },
       data: {
         status: 'connected'
@@ -85,7 +90,10 @@ export async function handleDisconnect(
     
     // Get connection info before deleting
     const connection = await queryOne<any>(`
-      SELECT * FROM connections WHERE connection_id = $1
+      SELECT c.*, u.name as user_name
+      FROM connections c
+      JOIN users u ON c.user_id = u.id
+      WHERE c.connection_id = $1
     `, [connectionId]);
     
     if (connection) {
@@ -99,7 +107,7 @@ export async function handleDisconnect(
         type: 'presence',
         user: {
           id: connection.user_id,
-          name: 'User Name'
+          name: connection.user_name || 'Unknown User'
         },
         data: {
           status: 'disconnected'
@@ -254,6 +262,11 @@ async function handlePresenceMessage(connection: any, message: WebSocketMessage)
  * Handle comment message
  */
 async function handleCommentMessage(connection: any, message: WebSocketMessage) {
+  // Fetch user name from database
+  const user = await queryOne<any>(`
+    SELECT name FROM users WHERE id = $1
+  `, [connection.user_id]);
+  
   // Save comment to database
   await query(`
     INSERT INTO comments (id, project_id, user_id, phase_type, content, position, resolved)
@@ -272,7 +285,7 @@ async function handleCommentMessage(connection: any, message: WebSocketMessage) 
     type: 'comment',
     user: {
       id: connection.user_id,
-      name: 'User Name'
+      name: user?.name || 'Unknown User'
     },
     data: message.data,
     timestamp: new Date().toISOString()

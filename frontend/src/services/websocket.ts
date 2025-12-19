@@ -37,18 +37,21 @@ class WebSocketService {
     this.ws.onclose = () => {
       console.log('WebSocket disconnected');
       
-      // Only reconnect if we haven't exceeded max attempts
-      if (this.reconnectAttempts < this.maxReconnectAttempts) {
-        // Reconnect with exponential backoff
-        setTimeout(() => {
-          this.reconnectAttempts++;
-          this.reconnectTimeout = Math.min(this.reconnectTimeout * 2, this.maxReconnectTimeout);
-          console.log(`Reconnecting (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-          this.connect(this.projectId, this.token);
-        }, this.reconnectTimeout);
-      } else {
+      // Check attempts before incrementing to avoid race condition
+      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
         console.error('Max reconnection attempts reached. Please refresh the page.');
+        return;
       }
+      
+      // Increment attempt counter
+      this.reconnectAttempts++;
+      
+      // Reconnect with exponential backoff
+      setTimeout(() => {
+        this.reconnectTimeout = Math.min(this.reconnectTimeout * 2, this.maxReconnectTimeout);
+        console.log(`Reconnecting (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+        this.connect(this.projectId, this.token);
+      }, this.reconnectTimeout);
     };
 
     this.ws.onerror = (error) => {
