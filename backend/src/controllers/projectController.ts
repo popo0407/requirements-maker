@@ -1,6 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { projectService } from '../services/projectService';
 import { ApiResponse } from '../models/types';
+import { extractUserIdFromAuthHeader } from '../utils/auth';
 
 /**
  * Create API Gateway response
@@ -22,13 +23,17 @@ function createResponse(
 
 /**
  * Extract user ID from event (from JWT token)
- * In production, this would decode the JWT token from Authorization header
+ * 
+ * SECURITY NOTE: This implementation requires proper JWT authentication.
+ * Ensure JWT_SECRET is set in environment variables.
  */
 function getUserId(event: APIGatewayProxyEvent): string {
-  // Mock implementation - in production, decode JWT
-  const authHeader = event.headers.Authorization || event.headers.authorization;
-  // This should decode JWT and extract user ID
-  return 'mock-user-id';
+  try {
+    const authHeader = event.headers.Authorization || event.headers.authorization;
+    return extractUserIdFromAuthHeader(authHeader);
+  } catch (error: any) {
+    throw new Error('Unauthorized: ' + error.message);
+  }
 }
 
 /**

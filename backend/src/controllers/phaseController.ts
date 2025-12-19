@@ -3,6 +3,7 @@ import { phaseService } from '../services/phaseService';
 import { projectService } from '../services/projectService';
 import { aiService } from '../services/aiService';
 import { ApiResponse, PhaseType } from '../models/types';
+import { extractUserIdFromAuthHeader } from '../utils/auth';
 
 function createResponse(
   statusCode: number,
@@ -19,8 +20,19 @@ function createResponse(
   };
 }
 
+/**
+ * Extract user ID from event (from JWT token)
+ * 
+ * SECURITY NOTE: This implementation requires proper JWT authentication.
+ * Ensure JWT_SECRET is set in environment variables.
+ */
 function getUserId(event: APIGatewayProxyEvent): string {
-  return 'mock-user-id';
+  try {
+    const authHeader = event.headers.Authorization || event.headers.authorization;
+    return extractUserIdFromAuthHeader(authHeader);
+  } catch (error: any) {
+    throw new Error('Unauthorized: ' + error.message);
+  }
 }
 
 /**

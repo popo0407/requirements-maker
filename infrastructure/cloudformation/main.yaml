@@ -44,6 +44,9 @@ Mappings:
       MinCapacity: 2
       MaxCapacity: 10
 
+Conditions:
+  IsProd: !Equals [!Ref Environment, prod]
+
 Resources:
   # VPC and Networking
   VPC:

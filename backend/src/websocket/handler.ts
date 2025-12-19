@@ -3,6 +3,7 @@ import { ApiGatewayManagementApi } from 'aws-sdk';
 import { query, queryOne } from '../utils/database';
 import { v4 as uuidv4 } from 'uuid';
 import { WebSocketMessage, WebSocketEvent } from '../models/types';
+import { verifyToken } from '../utils/auth';
 
 /**
  * WebSocket handler for real-time collaboration
@@ -14,10 +15,18 @@ const apiGateway = new ApiGatewayManagementApi({
 
 /**
  * Extract user ID from JWT token
+ * 
+ * SECURITY NOTE: This validates JWT tokens for WebSocket connections.
+ * Ensure JWT_SECRET is properly configured in environment variables.
+ * Tokens are passed via query string parameter during connection.
  */
 function getUserIdFromToken(token: string): string {
-  // Mock implementation - in production, decode JWT
-  return 'mock-user-id';
+  try {
+    const payload = verifyToken(token);
+    return payload.userId;
+  } catch (error: any) {
+    throw new Error('Invalid authentication token: ' + error.message);
+  }
 }
 
 /**

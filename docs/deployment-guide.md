@@ -201,9 +201,19 @@ BUCKET_NAME=$(aws cloudformation describe-stacks \
 aws s3 sync build/ s3://$BUCKET_NAME/ --delete
 
 # CloudFrontのキャッシュを無効化
-DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+# Note: CloudFormation output provides the domain name, not the distribution ID
+# Get the distribution ID from the CloudFront console or use AWS CLI to list distributions
+# aws cloudfront list-distributions --query 'DistributionList.Items[?Comment==`requirements-maker-prod`].Id' --output text
+
+# Alternatively, extract from CloudFront URL
+CLOUDFRONT_URL=$(aws cloudformation describe-stacks \
   --stack-name requirements-maker-prod \
-  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDistributionId`].OutputValue' \
+  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontURL`].OutputValue' \
+  --output text)
+
+# Get distribution ID by domain name
+DISTRIBUTION_ID=$(aws cloudfront list-distributions \
+  --query "DistributionList.Items[?DomainName=='$CLOUDFRONT_URL'].Id" \
   --output text)
 
 aws cloudfront create-invalidation \
