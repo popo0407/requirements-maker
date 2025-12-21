@@ -73,7 +73,7 @@ class ApiService {
   async getComments(projectId: string, phaseType?: PhaseType): Promise<Comment[]> {
     const params = phaseType ? { phase_type: phaseType } : {};
     const response = await this.client.get(`/projects/${projectId}/comments`, { params });
-    return response.data.data.comments;
+    return response.data.data;
   }
 
   async addComment(projectId: string, phaseType: PhaseType, content: string, position?: any): Promise<Comment> {
@@ -82,11 +82,12 @@ class ApiService {
       content,
       position,
     });
-    return response.data.data.comment;
+    return response.data.data;
   }
 
-  async resolveComment(projectId: string, commentId: string): Promise<void> {
-    await this.client.put(`/projects/${projectId}/comments/${commentId}/resolve`);
+  async resolveComment(projectId: string, commentId: string, resolved: boolean = true): Promise<Comment> {
+    const response = await this.client.put(`/projects/${projectId}/comments/${commentId}`, { resolved });
+    return response.data.data;
   }
 
   // History
@@ -106,6 +107,12 @@ class ApiService {
     const response = await this.client.post(`/projects/${projectId}/export`, { format });
     return response.data.data.export_url;
   }
+
+  // Database Initialization
+  async initDb(): Promise<void> {
+    await this.client.post('/init-db');
+  }
 }
 
-export const apiService = new ApiService();
+const apiService = new ApiService();
+export default apiService;

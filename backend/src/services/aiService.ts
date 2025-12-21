@@ -1,213 +1,143 @@
+import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { PhaseType, AIAssistRequest, AIAssistResponse } from '../models/types';
 
 /**
- * AI Service for providing phase-specific assistance
- * This is a stub implementation that should be replaced with actual AI API integration
- * (e.g., OpenAI, Anthropic Claude, AWS Bedrock, etc.)
+ * AI Service for providing phase-specific assistance using AWS Bedrock
  */
 export class AIService {
+  private client: BedrockRuntimeClient;
+  private modelId: string;
+
+  constructor() {
+    this.client = new BedrockRuntimeClient({ region: process.env.AWS_REGION || 'ap-northeast-1' });
+    // Default to Claude 3 Sonnet
+    this.modelId = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-sonnet-20240229-v1:0';
+  }
+
   /**
    * Request AI assistance for a specific phase
    */
   async assist(request: AIAssistRequest): Promise<AIAssistResponse> {
     const { phase_type, action, input } = request;
     
-    // This is a mock implementation
-    // In production, this would call an actual AI API
-    switch (phase_type) {
-      case 'idea':
-        return await this.handleIdeaPhase(action, input);
-      
-      case 'requirements':
-        return await this.handleRequirementsPhase(action, input);
-      
-      case 'design_planning':
-        return await this.handleDesignPlanningPhase(action, input);
-      
-      case 'design_document':
-        return await this.handleDesignDocumentPhase(action, input);
-      
-      default:
-        throw new Error(`Unknown phase type: ${phase_type}`);
+    const prompt = this.getPrompt(phase_type, action, input);
+    const responseText = await this.invokeBedrock(prompt);
+    
+    try {
+      // Try to parse JSON from the response if it's expected to be JSON
+      if (action !== 'generate') {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          return {
+            action,
+            output: parsed,
+            confidence: 0.9,
+            suggestions: []
+          };
+        }
+      }
+
+      // Fallback for non-JSON or generate action
+      return {
+        action,
+        output: { suggested_content: responseText },
+        confidence: 0.9,
+        suggestions: []
+      };
+    } catch (error) {
+      console.error('Failed to parse AI response:', error);
+      return {
+        action,
+        output: { suggested_content: responseText },
+        confidence: 0.5,
+        suggestions: ['AIの応答を正しく解析できませんでした。']
+      };
     }
   }
 
   /**
-   * Handle idea phase AI assistance
+   * Invoke AWS Bedrock model
    */
-  private async handleIdeaPhase(
-    action: string,
-    input: any
-  ): Promise<AIAssistResponse> {
-    switch (action) {
-      case 'summarize':
-        return {
-          action: 'summarize',
-          output: {
-            summary: 'アイデアの要約: ' + (input.ideas || []).length + '件のアイデアから主要なテーマを抽出しました。',
-            key_themes: ['テーマ1', 'テーマ2', 'テーマ3']
-          },
-          confidence: 0.85,
-          suggestions: ['より詳細な説明を追加してください', '優先順位をつけることをお勧めします']
-        };
-      
-      case 'categorize':
-        return {
-          action: 'categorize',
-          output: {
-            categories: {
-              'UI/UX': [],
-              'Backend': [],
-              'Infrastructure': []
-            }
-          },
-          confidence: 0.80,
-          suggestions: ['カテゴリを追加または変更できます']
-        };
-      
-      default:
-        throw new Error(`Unknown action for idea phase: ${action}`);
-    }
-  }
+  private async invokeBedrock(prompt: string): Promise<string> {
+    const payload = {
+      anthropic_version: "bedrock-2023-05-31",
+      max_tokens: 4096,
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    };
 
-  /**
-   * Handle requirements phase AI assistance
-   */
-  private async handleRequirementsPhase(
-    action: string,
-    input: any
-  ): Promise<AIAssistResponse> {
-    switch (action) {
-      case 'convert':
-        return {
-          action: 'convert',
-          output: {
-            functional_requirements: [
-              {
-                id: 'req-1',
-                title: '変換された機能要件',
-                description: 'アイデアから変換された要件',
-                priority: 'high',
-                status: 'confirmed'
-              }
-            ]
-          },
-          confidence: 0.75,
-          suggestions: ['要件の詳細を確認してください']
-        };
-      
-      case 'validate':
-        return {
-          action: 'validate',
-          output: {
-            issues: [
-              {
-                type: 'ambiguity',
-                requirement_id: 'req-1',
-                description: '「迅速に」という表現が曖昧です',
-                suggestion: '具体的な時間を指定してください（例: 1秒以内）'
-              }
-            ]
-          },
-          confidence: 0.90,
-          suggestions: ['曖昧な表現を明確にしてください']
-        };
-      
-      default:
-        throw new Error(`Unknown action for requirements phase: ${action}`);
-    }
-  }
+    try {
+      const command = new InvokeModelCommand({
+        modelId: this.modelId,
+        contentType: "application/json",
+        accept: "application/json",
+        body: JSON.stringify(payload)
+      });
 
-  /**
-   * Handle design planning phase AI assistance
-   */
-  private async handleDesignPlanningPhase(
-    action: string,
-    input: any
-  ): Promise<AIAssistResponse> {
-    switch (action) {
-      case 'consistency_check':
-        return {
-          action: 'consistency_check',
-          output: {
-            consistent: true,
-            issues: [],
-            validated_at: new Date().toISOString()
-          },
-          confidence: 0.88,
-          suggestions: ['要件とアーキテクチャの整合性が取れています']
-        };
-      
-      default:
-        throw new Error(`Unknown action for design planning phase: ${action}`);
-    }
-  }
-
-  /**
-   * Handle design document phase AI assistance
-   */
-  private async handleDesignDocumentPhase(
-    action: string,
-    input: any
-  ): Promise<AIAssistResponse> {
-    switch (action) {
-      case 'generate':
-        return {
-          action: 'generate',
-          output: {
-            markdown_content: `# 設計書
-
-## 概要
-このシステムは...
-
-## アーキテクチャ
-...
-
-## データモデル
-...
-
-## API仕様
-...
-`,
-            sections: [
-              { id: 'sec-1', title: '概要', content: 'このシステムは...', order: 1 },
-              { id: 'sec-2', title: 'アーキテクチャ', content: '...', order: 2 },
-              { id: 'sec-3', title: 'データモデル', content: '...', order: 3 },
-              { id: 'sec-4', title: 'API仕様', content: '...', order: 4 }
-            ]
-          },
-          confidence: 0.82,
-          suggestions: ['生成された設計書を確認し、必要に応じて編集してください']
-        };
-      
-      default:
-        throw new Error(`Unknown action for design document phase: ${action}`);
+      const response = await this.client.send(command);
+      const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+      return responseBody.content[0].text;
+    } catch (error) {
+      console.error('Bedrock invocation failed:', error);
+      throw new Error('AI支援機能の実行中にエラーが発生しました。');
     }
   }
 
   /**
    * Get AI prompts for a specific phase and action
-   * In production, these would be managed as configuration
    */
-  getPrompt(phaseType: PhaseType, action: string): string {
-    const prompts: Record<string, Record<string, string>> = {
+  private getPrompt(phaseType: PhaseType, action: string, input: any): string {
+    const context = input.current_content || '';
+    
+    const basePrompts: Record<string, Record<string, string>> = {
       idea: {
-        summarize: 'アイデアを要約し、主要なテーマを抽出してください。出力はJSON形式で。',
-        categorize: 'アイデアをカテゴリ分けしてください。出力はJSON形式で。'
+        summarize: `以下のプロジェクトアイデアを要約し、主要なテーマを抽出してください。
+また、Markdown形式で整理された「suggested_content」を含むJSON形式で回答してください。
+JSON構造: { "summary": "...", "suggested_content": "...", "key_themes": ["...", "..."] }
+
+入力内容:
+${context}`,
+        check_gaps: `以下のプロジェクトアイデアにおける「抜け漏れ」や「考慮不足」を指摘してください。
+Markdown形式で追記すべき内容を「suggested_content」に含め、JSON形式で回答してください。
+JSON構造: { "summary": "...", "suggested_content": "..." }
+
+入力内容:
+${context}`
       },
       requirements: {
-        convert: 'アイデアを構造化された要件に変換してください。出力はJSON形式で。',
-        validate: '要件の曖昧さや抜け漏れをチェックしてください。出力はJSON形式で。'
+        convert: `以下のアイデアを構造化された要件定義（機能要件・非機能要件）に変換してください。
+Markdown形式の「suggested_content」を含むJSON形式で回答してください。
+
+入力内容:
+${context}`,
+        validate: `以下の要件定義の曖昧さや矛盾をチェックしてください。
+JSON形式で回答してください。
+
+入力内容:
+${context}`
       },
       design_planning: {
-        consistency_check: '設計計画と要件の整合性をチェックしてください。出力はJSON形式で。'
+        consistency_check: `以下の設計計画と要件の整合性をチェックしてください。
+JSON形式で回答してください。
+
+入力内容:
+${context}`
       },
       design_document: {
-        generate: '要件と設計計画から設計書を生成してください。Markdown形式で出力。'
+        generate: `これまでの内容に基づき、詳細な設計書をMarkdown形式で生成してください。
+回答はMarkdownテキストのみで出力してください。
+
+入力内容:
+${context}`
       }
     };
     
-    return prompts[phaseType]?.[action] || '';
+    return basePrompts[phaseType]?.[action] || `以下の内容について支援してください: ${action}\n\n内容:\n${context}`;
   }
 }
 

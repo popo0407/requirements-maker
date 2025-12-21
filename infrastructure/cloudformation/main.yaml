@@ -1,5 +1,5 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Requirements Maker - Main Infrastructure Stack'
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Requirements Maker - Main Infrastructure Stack"
 
 Parameters:
   Environment:
@@ -10,27 +10,31 @@ Parameters:
       - staging
       - prod
     Description: Environment name
-  
+
   DBInstanceClass:
     Type: String
     Default: db.t3.micro
     Description: RDS instance class
-  
+
   DBName:
     Type: String
     Default: requirements_maker
     Description: Database name
-  
+
   DBUsername:
     Type: String
     Default: dbadmin
     Description: Database username
-  
+
   DBPassword:
     Type: String
     NoEcho: true
     Description: Database password
     MinLength: 8
+
+  LambdaCodeBucketName:
+    Type: String
+    Description: Name of the S3 bucket containing Lambda code
 
 Mappings:
   EnvironmentConfig:
@@ -64,7 +68,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.1.0/24
-      AvailabilityZone: !Select [0, !GetAZs '']
+      AvailabilityZone: !Select [0, !GetAZs ""]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -75,7 +79,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.2.0/24
-      AvailabilityZone: !Select [1, !GetAZs '']
+      AvailabilityZone: !Select [1, !GetAZs ""]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -86,7 +90,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.10.0/24
-      AvailabilityZone: !Select [0, !GetAZs '']
+      AvailabilityZone: !Select [0, !GetAZs ""]
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-private-subnet-1
@@ -96,7 +100,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.11.0/24
-      AvailabilityZone: !Select [1, !GetAZs '']
+      AvailabilityZone: !Select [1, !GetAZs ""]
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-private-subnet-2
@@ -183,7 +187,7 @@ Resources:
     Properties:
       DBInstanceIdentifier: !Sub ${AWS::StackName}-db
       Engine: postgres
-      EngineVersion: '14.10'
+      EngineVersion: "14.15"
       DBInstanceClass: !Ref DBInstanceClass
       AllocatedStorage: 20
       StorageType: gp2
@@ -195,8 +199,8 @@ Resources:
         - !Ref RDSSecurityGroup
       DBSubnetGroupName: !Ref DBSubnetGroup
       BackupRetentionPeriod: 7
-      PreferredBackupWindow: '03:00-04:00'
-      PreferredMaintenanceWindow: 'sun:04:00-sun:05:00'
+      PreferredBackupWindow: "03:00-04:00"
+      PreferredMaintenanceWindow: "sun:04:00-sun:05:00"
       MultiAZ: !If [IsProd, true, false]
       PubliclyAccessible: false
       Tags:
@@ -255,6 +259,174 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
 
+  # API Gateway (REST)
+  RestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub ${AWS::StackName}-api
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  RestApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: "{proxy+}"
+      RestApiId: !Ref RestApi
+
+  RestApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: ANY
+      ResourceId: !Ref RestApiResource
+      RestApiId: !Ref RestApi
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambdaFunction.Arn}/invocations
+
+  RestApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: RestApiMethod
+    Properties:
+      RestApiId: !Ref RestApi
+
+  RestApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId: !Ref RestApiDeployment
+      RestApiId: !Ref RestApi
+      StageName: v1
+
+  # API Gateway (WebSocket)
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub ${AWS::StackName}-websocket
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
+
+  WebSocketConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      Target: !Sub integrations/${WebSocketIntegration}
+
+  WebSocketDisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $disconnect
+      Target: !Sub integrations/${WebSocketIntegration}
+
+  WebSocketDefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $default
+      Target: !Sub integrations/${WebSocketIntegration}
+
+  WebSocketIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketLambdaFunction.Arn}/invocations
+
+  WebSocketDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+      - WebSocketConnectRoute
+      - WebSocketDisconnectRoute
+      - WebSocketDefaultRoute
+    Properties:
+      ApiId: !Ref WebSocketApi
+
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      DeploymentId: !Ref WebSocketDeployment
+      StageName: dev
+
+  # Lambda Functions
+  ApiLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-api
+      Handler: dist/lambda.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Timeout: 30
+      MemorySize: 512
+      Code:
+        S3Bucket: !Ref LambdaCodeBucketName
+        S3Key: backend.zip
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt RDSInstance.Endpoint.Address
+          DB_PORT: "5432"
+          DB_NAME: !Ref DBName
+          DB_USER: !Ref DBUsername
+          DB_PASSWORD: !Ref DBPassword
+          JWT_SECRET: !Ref DBPassword # Temporary use DBPassword as secret
+          NODE_ENV: production
+
+  WebSocketLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-websocket
+      Handler: dist/websocket/dispatcher.dispatcher
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Timeout: 30
+      MemorySize: 512
+      Code:
+        S3Bucket: !Ref LambdaCodeBucketName
+        S3Key: backend.zip
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt RDSInstance.Endpoint.Address
+          DB_PORT: "5432"
+          DB_NAME: !Ref DBName
+          DB_USER: !Ref DBUsername
+          DB_PASSWORD: !Ref DBPassword
+          JWT_SECRET: !Ref DBPassword
+          WEBSOCKET_ENDPOINT: !Sub https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev
+          NODE_ENV: production
+
+  ApiLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ApiLambdaFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*
+
+  WebSocketLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref WebSocketLambdaFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*
+
   # CloudFront Distribution
   CloudFrontOriginAccessControl:
     Type: AWS::CloudFront::OriginAccessControl
@@ -306,7 +478,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
@@ -317,7 +489,7 @@ Resources:
       Policies:
         - PolicyName: LambdaPolicy
           PolicyDocument:
-            Version: '2012-10-17'
+            Version: "2012-10-17"
             Statement:
               - Effect: Allow
                 Action:
@@ -334,6 +506,11 @@ Resources:
                   - s3:PutObject
                   - s3:GetObject
                 Resource: !Sub ${ExportBucket.Arn}/*
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: "*"
 
   # CloudWatch Log Groups
   ApiLogGroup:
@@ -408,3 +585,21 @@ Outputs:
     Value: !GetAtt LambdaExecutionRole.Arn
     Export:
       Name: !Sub ${AWS::StackName}-LambdaExecutionRole
+
+  RestApiUrl:
+    Description: REST API URL
+    Value: !Sub https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/v1
+    Export:
+      Name: !Sub ${AWS::StackName}-RestApiUrl
+
+  WebSocketApiUrl:
+    Description: WebSocket API URL
+    Value: !Sub wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev
+    Export:
+      Name: !Sub ${AWS::StackName}-WebSocketApiUrl
+
+  LambdaCodeBucketName:
+    Description: Lambda Code S3 Bucket Name
+    Value: !Ref LambdaCodeBucketName
+    Export:
+      Name: !Sub ${AWS::StackName}-LambdaCodeBucket

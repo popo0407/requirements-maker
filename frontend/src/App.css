@@ -181,3 +181,24 @@ h2 {
   margin: 0;
   opacity: 0.8;
 }
+
+/* Remote Cursors */
+.remote-cursor-guest-user {
+  background-color: #3b82f6;
+  width: 2px !important;
+}
+
+.remote-cursor-label-guest-user::before {
+  content: "Other User";
+  position: absolute;
+  top: -18px;
+  left: 0;
+  background: #3b82f6;
+  color: white;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+}

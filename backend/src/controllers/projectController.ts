@@ -2,6 +2,9 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { projectService } from '../services/projectService';
 import { ApiResponse } from '../models/types';
 import { extractUserIdFromAuthHeader } from '../utils/auth';
+import * as fs from 'fs';
+import * as path from 'path';
+import { query } from '../utils/database';
 
 /**
  * Create API Gateway response
@@ -274,6 +277,72 @@ export async function deleteProject(
     });
   } catch (error: any) {
     console.error('Error deleting project:', error);
+    return createResponse(500, {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error.message
+      }
+    });
+  }
+}
+
+/**
+ * Initialize Database (Development only)
+ */
+export async function initDb(
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> {
+  try {
+    console.log('Initializing database...');
+    
+    // 1. Create tables
+    // Note: In Lambda, the path might be different. We'll try a few locations.
+    const possiblePaths = [
+      path.join(__dirname, '../../migrations/001_initial_schema.sql'),
+      path.join(process.cwd(), 'migrations/001_initial_schema.sql'),
+      '/var/task/migrations/001_initial_schema.sql'
+    ];
+    
+    let sql = '';
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        sql = fs.readFileSync(p, 'utf8');
+        console.log(`Found migration file at: ${p}`);
+        break;
+      }
+    }
+    
+    if (!sql) {
+      // Fallback: hardcoded minimal schema if file not found
+      sql = `
+        CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+        CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email VARCHAR(255) UNIQUE NOT NULL, name VARCHAR(255) NOT NULL, password_hash VARCHAR(255) NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS projects (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL, description TEXT, owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, current_phase VARCHAR(50) NOT NULL DEFAULT 'idea', created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS project_members (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, role VARCHAR(50) NOT NULL DEFAULT 'viewer', created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, UNIQUE(project_id, user_id));
+        CREATE TABLE IF NOT EXISTS phases (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE, phase_type VARCHAR(50) NOT NULL, data JSONB NOT NULL DEFAULT '{}', status VARCHAR(50) NOT NULL DEFAULT 'in_progress', completed_at TIMESTAMP WITH TIME ZONE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, UNIQUE(project_id, phase_type));
+        CREATE TABLE IF NOT EXISTS comments (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, phase_type VARCHAR(50) NOT NULL, content TEXT NOT NULL, position JSONB, resolved BOOLEAN DEFAULT FALSE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS history (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE, user_id UUID REFERENCES users(id) ON DELETE SET NULL, phase_type VARCHAR(50) NOT NULL, action VARCHAR(50) NOT NULL, data_before JSONB, data_after JSONB, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);
+      `;
+    }
+    
+    // Execute SQL (split by semicolon to handle multiple statements if needed, 
+    // but pg pool.query can handle multiple statements if they are separated by ;)
+    await query(sql);
+    
+    // 2. Create default user
+    await query(`
+      INSERT INTO users (id, email, name, password_hash)
+      VALUES ('00000000-0000-0000-0000-000000000000', 'guest@example.com', 'Guest User', 'no-password')
+      ON CONFLICT (id) DO NOTHING
+    `);
+
+    return createResponse(200, {
+      success: true,
+      data: { message: 'Database initialized successfully' }
+    });
+  } catch (error: any) {
+    console.error('Error initializing database:', error);
     return createResponse(500, {
       success: false,
       error: {

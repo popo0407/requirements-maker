@@ -43,6 +43,7 @@ temp/
 # AWS
 .aws-sam/
 samconfig.toml
+.aws/
 
 # Database
 *.db
